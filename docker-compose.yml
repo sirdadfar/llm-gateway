@@ -1,0 +1,23 @@
+services:
+  gateway:
+    build: .
+    ports: ["3000:3000"]
+    env_file: .env
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  postgres:
+    image: postgres:17-alpine
+    environment: {POSTGRES_DB: llm_gateway, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres}
+    healthcheck: {test: ["CMD-SHELL","pg_isready -U postgres -d llm_gateway"],interval: 5s,timeout: 5s,retries: 10}
+    volumes: [pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:8-alpine
+    healthcheck: {test: ["CMD","redis-cli","ping"],interval: 5s,timeout: 3s,retries: 10}
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes: [ollamadata:/root/.ollama]
+    ports: ["11434:11434"]
+volumes: {pgdata: {}, ollamadata: {}}
