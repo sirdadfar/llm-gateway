@@ -11,7 +11,7 @@ export class Initial1700000000000 implements MigrationInterface {
     );
 
     await q.query(
-      'CREATE TABLE "usage_logs" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "apiKeyId" uuid NOT NULL, "provider" varchar(32) NOT NULL, "model" varchar(160) NOT NULL, "promptTokens" integer NOT NULL DEFAULT 0, "completionTokens" integer NOT NULL DEFAULT 0, "totalTokens" integer NOT NULL DEFAULT 0, "latencyMs" integer NOT NULL DEFAULT 0, "status" varchar(24) NOT NULL, "cached" boolean NOT NULL DEFAULT false, "stream" boolean NOT NULL DEFAULT false, "errorCode" varchar(80), "createdAt" timestamptz NOT NULL DEFAULT now(), CONSTRAINT "PK_usage_logs" PRIMARY KEY ("id"), CONSTRAINT "FK_usage_api_key" FOREIGN KEY ("apiKeyId") REFERENCES "api_keys"("id") ON DELETE CASCADE)',
+      'CREATE TABLE "usage_logs" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "apiKeyId" uuid NOT NULL, "provider" varchar(32) NOT NULL, "model" varchar(160) NOT NULL, "promptTokens" integer NOT NULL DEFAULT 0, "completionTokens" integer NOT NULL DEFAULT 0, "totalTokens" integer NOT NULL DEFAULT 0, "latencyMs" integer NOT NULL DEFAULT 0, "status" varchar(24) NOT NULL, "cached" boolean NOT NULL DEFAULT false, "stream" boolean NOT NULL DEFAULT false, "errorCode" varchar(80), "createdAt" timestamptz NOT NULL DEFAULT now(), CONSTRAINT "PK_usage_logs" PRIMARY KEY ("id"))',
     );
 
     await q.query('CREATE INDEX "IDX_api_keys_active" ON "api_keys" ("active")');
