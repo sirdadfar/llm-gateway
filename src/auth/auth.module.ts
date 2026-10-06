@@ -1,0 +1,2 @@
+import {Module} from '@nestjs/common';import {TypeOrmModule} from '@nestjs/typeorm';import {ApiKey} from './api-key.entity';import {ApiKeyService} from './api-key.service';import {ApiKeyGuard} from './api-key.guard';import {AdminGuard} from './admin.guard';
+@Module({imports:[TypeOrmModule.forFeature([ApiKey])],providers:[ApiKeyService,ApiKeyGuard,AdminGuard],exports:[ApiKeyService,ApiKeyGuard,AdminGuard,TypeOrmModule]})export class AuthModule{}
