@@ -1,101 +1,119 @@
 # LLM Gateway
 
-[![CI](https://github.com/sirdadfar/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sirdadfar/llm-gateway/actions/workflows/ci.yml) [فارسی](README.fa.md)
+[![CI](https://github.com/sirdadfar/llm-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/sirdadfar/llm-gateway/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [فارسی](README.fa.md)
 
-A self-hosted, production-minded **OpenAI-compatible LLM gateway** built with NestJS and TypeScript. One API in front of OpenAI, Anthropic Claude and local Ollama models.
+A self-hosted, production-minded OpenAI-compatible LLM gateway built with NestJS and TypeScript. One stable API contract in front of OpenAI, Anthropic Claude and local Ollama models.
 
-## Features
+## Highlights
 
-- OpenAI-compatible `/v1/chat/completions` and `/v1/models`
-- Prefix-based model routing plus simple aliases
-- Claude, OpenAI and Ollama provider adapters
-- Non-streaming and SSE streaming
-- API keys stored as SHA-256 hashes; full key shown only at creation
-- Redis request limiting and response caching
-- PostgreSQL usage/audit records
-- Admin key management and usage statistics
-- Swagger at `/docs`, liveness/readiness checks
-- Docker Compose, migrations, Jest and GitHub Actions
-- Prompts and Authorization headers are not logged by default
-
-## Quick start
-
-1. `cp .env.example .env`
-2. Put at least one provider key in `.env` (Ollama can run locally).
-3. `docker compose up --build`
-
-Create a client key:
-
-```bash
-curl -X POST http://localhost:3000/admin/api-keys \
-  -H "Authorization: Bearer change-me" -H "Content-Type: application/json" \
-  -d '{"name":"local-client","requestsPerMinute":60,"allowedModels":[]}'
-```
-
-Use the returned key once:
-
-```bash
-curl http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer lgw_..." -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}],"temperature":0}'
-```
-
-Streaming:
-
-```bash
-curl http://localhost:3000/v1/chat/completions \
-  -H "Authorization: Bearer lgw_..." -H "Content-Type: application/json" \
-  -d '{"model":"ollama/llama3.2","messages":[{"role":"user","content":"Write one sentence."}],"stream":true}'
-```
+- OpenAI-compatible chat completions and model discovery
+- OpenAI SDK compatible Node.js and Python examples
+- Configurable routing, aliases, retries, timeouts and optional fallback
+- Non-streaming and SSE streaming with client disconnect cancellation
+- API keys with lgw_ prefix; only SHA-256 hashes are stored
+- Per-key model allowlists, Redis sliding-window rate limiting and monthly quota counters
+- Redis response cache with deterministic canonical keys
+- PostgreSQL usage/audit persistence and admin statistics
+- Liveness/readiness checks, Swagger, Helmet, CORS and request-size limits
+- TypeORM migrations, Docker Compose, Jest and GitHub Actions
+- Prompts and authorization tokens are not logged by default
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  C[OpenAI SDK / client] --> G[NestJS Gateway]
-  G --> A[API Key Guard]
+  C[OpenAI SDK / Client] --> G[NestJS Gateway]
+  G --> A[API Key Auth]
   A --> R[Redis Rate Limit]
   R --> S[Chat Service]
+  S --> K[Redis Cache]
   S --> P[Provider Registry]
   P --> O[OpenAI]
   P --> H[Anthropic]
   P --> L[Ollama]
-  S --> K[Redis Cache]
   S --> U[Usage Service]
   U --> D[(PostgreSQL)]
 ```
 
-The provider boundary is deliberately small: request normalization happens before the provider adapter, and response/stream chunks are mapped back to OpenAI's public contract.
+The public controllers do not talk directly to vendor SDKs. Requests are normalized into a small internal contract, provider adapters perform translation, and results are mapped back to the OpenAI public contract.
 
 ## Model routing
 
-- `gpt-*`, `o1*`, `o3*`, `o4*` → OpenAI
-- `claude-*` → Anthropic
-- `ollama/<name>` → Ollama
-- `fast` → OpenAI, `smart` → Anthropic
+- gpt-* / o1* / o3* / o4* -> OpenAI
+- claude-* -> Anthropic
+- ollama/* -> Ollama
+- fast -> gpt-4o-mini
+- smart -> claude-sonnet-4-5
 
-Provider availability is controlled by `ENABLED_PROVIDERS`.
+ENABLED_PROVIDERS is authoritative: a disabled provider cannot be selected by routing or fallback. Custom routes and aliases are supported through MODEL_ROUTES_JSON and MODEL_ALIASES_JSON.
 
-## OpenAI SDK compatibility
+## Reliability
 
-Node:
+Provider clients use configurable timeouts and retry budgets. Fallback is optional and only considered for upstream timeout/HTTP 5xx-style failures, not authentication, validation or policy errors.
 
-```js
-import OpenAI from 'openai';
-const client = new OpenAI({apiKey: process.env.LGW_KEY, baseURL:'http://localhost:3000/v1'});
-const answer = await client.chat.completions.create({model:'gpt-4o-mini',messages:[{role:'user',content:'Hello'}]});
-console.log(answer.choices[0].message.content);
+Streaming requests propagate the client abort signal to the provider adapter. Redis cache failures fail open because caching is an optimization; rate-limit failures return 503 rather than silently bypassing a security policy.
+
+## Security
+
+Client secrets are generated as lgw_<random-secret>. The plaintext secret is returned once at creation time. PostgreSQL stores only SHA-256 and a short prefix.
+
+Administrative endpoints use a separate ADMIN_API_KEY and compare it using a length-safe constant-time comparison. Do not commit credentials, prompts or generated secrets.
+
+Per-key allowedModels can restrict access to an explicit model list. An empty list means all models exposed by enabled providers.
+
+## Caching
+
+Streams are never cached. Temperature 0 requests are cacheable by default; X-Cache: enable explicitly enables caching for other temperatures. Cache-Control: no-cache bypasses it.
+
+Cache keys are SHA-256 hashes of recursively canonicalized request data, so object property order does not create duplicate entries. X-Cache is HIT for a cache hit and MISS for an eligible upstream response.
+
+## Rate limits and quotas
+
+Request limiting uses an atomic Redis Lua sliding window. Responses include X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset; 429 responses also include Retry-After.
+
+Monthly token counters are keyed by API key and UTC month. A quota of 0 disables the quota.
+
+## API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | /v1/chat/completions | Chat completion |
+| GET | /v1/models | Models visible to the current key |
+| GET | /v1/usage | Current key usage |
+| POST | /admin/api-keys | Create client key |
+| GET | /admin/api-keys | List client keys |
+| DELETE | /admin/api-keys/:id | Revoke client key |
+| GET | /admin/usage | Aggregated usage |
+| GET | /health | Liveness |
+| GET | /health/ready | Dependency readiness |
+| GET | /docs | Swagger UI |
+
+## Quick start
+
+1. Copy .env.example to .env.
+2. Configure at least one provider credential, or run Ollama locally.
+3. Start the stack:
+
+```bash
+docker compose up --build
 ```
 
-Python:
+Create a client key:
 
-```python
-from openai import OpenAI
-client = OpenAI(api_key="lgw_...", base_url="http://localhost:3000/v1")
-print(client.chat.completions.create(
-    model="ollama/llama3.2",
-    messages=[{"role":"user","content":"Hello"}],
-).choices[0].message.content)
+```bash
+curl -X POST http://localhost:3000/admin/api-keys \
+  -H "Authorization: Bearer change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"local-client","requestsPerMinute":60,"monthlyTokenQuota":0,"allowedModels":[]}'
+```
+
+Use it:
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Authorization: Bearer lgw_..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}],"temperature":0}'
 ```
 
 ## Environment
@@ -103,48 +121,35 @@ print(client.chat.completions.create(
 | Variable | Purpose | Default |
 |---|---|---|
 | PORT | HTTP port | 3000 |
-| DATABASE_URL | PostgreSQL URL | — |
-| REDIS_URL | Redis URL | — |
-| ADMIN_API_KEY | Admin bearer key | — |
+| DATABASE_URL | PostgreSQL connection | required |
+| REDIS_URL | Redis connection | required |
+| ADMIN_API_KEY | Admin secret | required |
 | OPENAI_API_KEY | OpenAI credential | empty |
 | ANTHROPIC_API_KEY | Anthropic credential | empty |
 | OLLAMA_BASE_URL | Ollama endpoint | http://ollama:11434 |
-| ENABLED_PROVIDERS | enabled adapters | openai,anthropic,ollama |
-| REQUEST_TIMEOUT_MS | upstream timeout budget | 60000 |
-| PROVIDER_RETRIES | retry budget | 1 |
-| CACHE_ENABLED | response cache | true |
-| CACHE_TTL_SECONDS | cache TTL | 300 |
-| RATE_LIMIT_ENABLED | Redis limiting | true |
-| DEFAULT_RPM | default key RPM | 60 |
-| DEFAULT_MONTHLY_TOKEN_QUOTA | monthly quota; 0 disables | 0 |
-| LOG_PROMPTS | opt-in prompt logging | false |
+| ENABLED_PROVIDERS | Enabled adapters | all |
+| REQUEST_TIMEOUT_MS | Provider timeout | 60000 |
+| PROVIDER_RETRIES | SDK retry budget | 1 |
+| CACHE_ENABLED | Response cache | true |
+| CACHE_TTL_SECONDS | Cache TTL | 300 |
+| RATE_LIMIT_ENABLED | Request limiting | true |
+| DEFAULT_RPM | Default RPM | 60 |
+| DEFAULT_MONTHLY_TOKEN_QUOTA | Default quota | 0 |
+| FALLBACK_ENABLED | Fallback routing | false |
+| FALLBACK_MODELS | Ordered fallback candidates | empty |
+| MODEL_ROUTES_JSON | Routing rules | built-in |
+| MODEL_ALIASES_JSON | Model aliases | built-in |
+| LOG_PROMPTS | Prompt logging | false |
 
-## API
+## Docker
 
-- `POST /v1/chat/completions`
-- `GET /v1/models`
-- `GET /v1/usage`
-- `POST /admin/api-keys`
-- `GET /admin/api-keys`
-- `DELETE /admin/api-keys/:id`
-- `GET /admin/usage`
-- `GET /health`
-- `GET /health/ready`
-- `GET /docs`
+The default Compose stack starts the gateway, PostgreSQL and Redis. Ollama is optional:
 
-Cache is only used for non-streaming calls at temperature 0, or when `X-Cache: enable` is sent. `Cache-Control: no-cache` bypasses it. Cached responses are recorded with `cached=true`.
+```bash
+docker compose --profile ollama up --build
+```
 
-## Adding a provider
-
-Implement `LLMProvider` with `chat`, `chatStream`, `listModels` and `healthCheck`. Add the class to `ProvidersModule`, then add its routing rule to `ProviderRegistry`. Keep provider-specific types inside that adapter; do not leak SDK objects into the chat service.
-
-## Design decisions
-
-**PostgreSQL** is the source of truth for credentials metadata and usage. **Redis** is deliberately ephemeral: rate-limit counters and cached completions can disappear without data loss.
-
-The gateway uses a normalized internal request/result model instead of passing vendor SDK objects through controllers. This makes provider behavior testable and keeps the public API stable.
-
-The current reference implementation favors a compact operational surface over a job queue. Usage writes are fire-and-forget with guarded failure handling, so telemetry cannot block a response.
+The application image runs as a non-root user. Set DB_RUN_MIGRATIONS=true when the container should apply TypeORM migrations at startup.
 
 ## Development
 
@@ -154,12 +159,23 @@ npm run migration:run
 npm run start:dev
 npm test
 npm run lint
+npm run format:check
 npm run build
 ```
 
-## Trade-offs and roadmap
+CI runs lint, tests, build and Docker image build with PostgreSQL and Redis services.
 
-The next hardening steps are distributed Redis rate limiting with Lua, exact tokenizer accounting for providers without usage metadata, configurable retry/fallback policies, per-model cost tables, and a durable usage queue.
+## Adding a provider
+
+Implement LLMProvider with chat, chatStream, listModels and healthCheck. Keep vendor-specific types inside the adapter, register it in ProvidersModule, then add routing rules to ProviderRegistry.
+
+## Production notes
+
+PostgreSQL is the source of truth for key metadata and usage. Redis is ephemeral infrastructure for rate limiting, quotas and caching.
+
+For production, terminate TLS at a trusted reverse proxy/load balancer, restrict CORS, replace the development admin secret, use managed PostgreSQL/Redis with backups and monitoring, and rotate provider credentials regularly.
+
+Usage persistence is intentionally non-blocking. If telemetry storage is unavailable, the request path remains available; deployments requiring guaranteed telemetry should place a durable queue in front of the usage writer.
 
 ## License
 
