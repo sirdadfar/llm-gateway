@@ -21,7 +21,7 @@ export class CacheService {
     maxRetriesPerRequest: 1,
   });
   private readonly enabled = process.env.CACHE_ENABLED !== 'false';
-  private readonly ttl = Number(process.env.CACHE_TTL_SECONDS ?? 300);
+  private readonly ttl = Math.max(1, Number(process.env.CACHE_TTL_SECONDS ?? 300));
 
   key(input: unknown): string {
     return 'llm:cache:' + createHash('sha256').update(JSON.stringify(stable(input))).digest('hex');
@@ -29,12 +29,22 @@ export class CacheService {
 
   async get<T>(key: string): Promise<T | null> {
     if (!this.enabled) return null;
-    const value = await this.redis.get(key);
-    return value ? (JSON.parse(value) as T) : null;
+
+    try {
+      const value = await this.redis.get(key);
+      return value ? (JSON.parse(value) as T) : null;
+    } catch {
+      return null;
+    }
   }
 
   async set(key: string, value: unknown): Promise<void> {
     if (!this.enabled) return;
-    await this.redis.set(key, JSON.stringify(value), 'EX', this.ttl);
+
+    try {
+      await this.redis.set(key, JSON.stringify(value), 'EX', this.ttl);
+    } catch {
+      // Cache is an optimization; Redis failure must never fail an LLM request.
+    }
   }
 }
