@@ -4,21 +4,24 @@ import { OpenAIError } from '../common/openai-error';
 import { ApiKey } from '../auth/api-key.entity';
 import { RateLimitService } from './rate-limit.service';
 
+type GatewayRequest = Request & { apiKey: ApiKey; id?: string };
+
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(private readonly limiter: RateLimitService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<Request & { apiKey: ApiKey }>();
+    const request = context.switchToHttp().getRequest<GatewayRequest>();
     const response = context.switchToHttp().getResponse<Response>();
 
     if (process.env.RATE_LIMIT_ENABLED === 'false') return true;
 
-    const result = await this.limiter.consume(
-      request.apiKey.id,
-      request.apiKey.requestsPerMinute,
-      request.id ?? 'anonymous',
-    );
+    let result;
+    try {
+      result = await this.limiter.consume(request.apiKey.id, Math.max(1, request.apiKey.requestsPerMinute), request.id ?? 'request');
+    } catch {
+      throw new OpenAIError('Rate limiting service is unavailable', 'server_error', 'rate_limit_unavailable', 503);
+    }
 
     response.setHeader('X-RateLimit-Limit', request.apiKey.requestsPerMinute);
     response.setHeader('X-RateLimit-Remaining', result.remaining);
