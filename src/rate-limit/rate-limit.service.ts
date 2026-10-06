@@ -15,7 +15,7 @@ export class RateLimitService {
     maxRetriesPerRequest: 1,
   });
 
-  private readonly script = [
+  private readonly rateLimitScript = [
     "local key=KEYS[1]",
     "local now=tonumber(ARGV[1])",
     "local window=tonumber(ARGV[2])",
@@ -33,10 +33,21 @@ export class RateLimitService {
     "return {1,limit-count-1,now+window}",
   ].join(';');
 
+  private readonly quotaScript = [
+    "local key=KEYS[1]",
+    "local tokens=tonumber(ARGV[1])",
+    "local limit=tonumber(ARGV[2])",
+    "local current=tonumber(redis.call('GET',key) or '0')",
+    "if current+tokens>limit then return {0,current} end",
+    "local total=redis.call('INCRBY',key,tokens)",
+    "if current==0 then redis.call('EXPIRE',key,3024000) end",
+    "return {1,total}",
+  ].join(';');
+
   async consume(key: string, limit: number, requestId: string): Promise<RateLimitResult> {
     const now = Date.now();
     const result = (await this.redis.eval(
-      this.script,
+      this.rateLimitScript,
       1,
       'llm:rl:' + key,
       now,
@@ -69,10 +80,17 @@ export class RateLimitService {
 
   async consumeQuota(key: string, tokens: number, limit: number): Promise<boolean> {
     if (limit <= 0 || tokens <= 0) return true;
+
     const month = new Date().toISOString().slice(0, 7);
     const quotaKey = 'llm:quota:' + month + ':' + key;
-    const total = await this.redis.incrby(quotaKey, tokens);
-    if (total === tokens) await this.redis.expire(quotaKey, 35 * 24 * 60 * 60);
-    return total <= limit;
+    const result = (await this.redis.eval(
+      this.quotaScript,
+      1,
+      quotaKey,
+      Math.max(0, Math.floor(tokens)),
+      Math.floor(limit),
+    )) as number[];
+
+    return Number(result[0]) === 1;
   }
 }
