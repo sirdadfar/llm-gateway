@@ -1,0 +1,1 @@
+import {Module}from'@nestjs/common';import {ModelsController}from'./models.controller';import {ProvidersModule}from'../providers/providers.module';@Module({imports:[ProvidersModule],controllers:[ModelsController]})export class ModelsModule{}
