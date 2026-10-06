@@ -1,18 +1,17 @@
 {
   "name": "llm-gateway",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Self-hosted OpenAI-compatible LLM gateway for OpenAI, Anthropic Claude and Ollama.",
   "private": false,
   "license": "MIT",
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "scripts": {
     "build": "nest build",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
-    "lint": "eslint \"{src,test}/**/*.ts\"",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "lint": "eslint "{src,test}/**/*.ts"",
+    "format": "prettier --write "src/**/*.ts" "test/**/*.ts"",
+    "format:check": "prettier --check "src/**/*.ts" "test/**/*.ts"",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage --runInBand",
@@ -28,10 +27,12 @@
     "@nestjs/platform-express": "^12.1.2",
     "@nestjs/swagger": "^12.0.2",
     "@nestjs/terminus": "^12.1.0",
+    "@nestjs/testing": "^12.1.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "helmet": "^8.1.0",
     "ioredis": "^5.7.0",
+    "joi": "^18.0.1",
     "nestjs-pino": "^4.4.0",
     "openai": "^6.5.0",
     "pg": "^8.16.3",
@@ -39,14 +40,11 @@
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "typeorm": "^0.3.27",
-    "joi": "^18.0.1",
-    "@nestjs/testing": "^12.1.2"
+    "typeorm": "^0.3.27"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",
     "@nestjs/schematics": "^12.0.0",
-    "@nestjs/testing": "^11.1.6",
     "@types/express": "^5.0.5",
     "@types/jest": "^29.5.14",
     "@types/node": "^24.0.15",
@@ -63,27 +61,12 @@
     "typescript": "^5.9.3"
   },
   "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
+    "moduleFileExtensions": ["js", "json", "ts"],
     "rootDir": ".",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "src/**/*.ts"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 70,
-        "functions": 80,
-        "lines": 80,
-        "statements": 80
-      }
-    },
+    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+    "collectCoverageFrom": ["src/**/*.ts"],
+    "coverageThreshold": { "global": { "branches": 70, "functions": 80, "lines": 80, "statements": 80 } },
     "testEnvironment": "node"
   }
 }
