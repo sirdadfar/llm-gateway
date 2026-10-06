@@ -1,0 +1,1 @@
+import {CacheService}from'../src/cache/cache.service';describe('Cache key',()=>{it('is stable and sha256 based',()=>{const s=new CacheService();expect(s.key({b:2,a:1})).not.toBe(s.key({a:1,b:2}));expect(s.key({a:1})).toMatch(/^llm:cache:[a-f0-9]{64}$/)})})
