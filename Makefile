@@ -3,7 +3,7 @@ up:
 down:
 	docker compose down
 install:
-	npm ci
+	npm install
 dev:
 	npm run start:dev
 test:
