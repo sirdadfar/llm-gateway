@@ -6,7 +6,7 @@ import { ChatRequest, ChatResult, LLMProvider, StreamChunk } from './llm-provide
 @Injectable()
 export class OpenAIProvider implements LLMProvider {
   readonly name = 'openai';
-  private readonly client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'disabled' });
+  private readonly client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || 'disabled', timeout: Number(process.env.REQUEST_TIMEOUT_MS ?? 60000), maxRetries: Number(process.env.PROVIDER_RETRIES ?? 1) });
   async chat(r: ChatRequest, signal?: AbortSignal): Promise<ChatResult> {
     const x = await this.client.chat.completions.create({ model: r.model, messages: r.messages as never[], temperature: r.temperature, max_tokens: r.maxTokens, top_p: r.topP, stop: r.stop }, { signal });
     const c = x.choices[0];
