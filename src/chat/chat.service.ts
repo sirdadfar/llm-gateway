@@ -5,6 +5,7 @@ import { OpenAIError } from '../common/openai-error';
 import { ChatRequest, ChatResult, StreamChunk } from '../providers/llm-provider.interface';
 import { ProviderRegistry } from '../providers/provider.registry';
 import { UsageService } from '../usage/usage.service';
+import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { ChatCompletionDto } from './dto/chat-completion.dto';
 
 @Injectable()
@@ -13,6 +14,7 @@ export class ChatService {
     private readonly registry: ProviderRegistry,
     private readonly cache: CacheService,
     private readonly usage: UsageService,
+    private readonly limiter: RateLimitService,
   ) {}
 
   private normalized(dto: ChatCompletionDto): ChatRequest {
@@ -114,6 +116,12 @@ export class ChatService {
       }
     }
 
+    const quota = Number(key.monthlyTokenQuota);
+    if (quota > 0 && !(await this.limiter.consumeQuota(key.id, result.usage.totalTokens, quota))) {
+      await this.recordError(key, usedProvider.name, result.model, false, startedAt, new OpenAIError('Monthly token quota exceeded', 'rate_limit_error', 'monthly_quota_exceeded', 429));
+      throw new OpenAIError('Monthly token quota exceeded', 'rate_limit_error', 'monthly_quota_exceeded', 429);
+    }
+
     const body: Record<string, unknown> = {
       id: result.id,
       object: 'chat.completion',
@@ -203,6 +211,10 @@ export class ChatService {
           totalTokens = chunk.usage.totalTokens;
         }
         yield chunk;
+      }
+
+      if (Number(key.monthlyTokenQuota) > 0) {
+        void this.limiter.consumeQuota(key.id, totalTokens, Number(key.monthlyTokenQuota));
       }
 
       void this.usage.record({
