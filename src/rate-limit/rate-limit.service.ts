@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -41,7 +42,7 @@ export class RateLimitService {
       now,
       60000,
       limit,
-      requestId + ':' + now,
+      requestId + ':' + now + ':' + randomUUID(),
     )) as number[];
 
     return {
