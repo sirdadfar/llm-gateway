@@ -1,23 +1,60 @@
 services:
   gateway:
     build: .
-    ports: ["3000:3000"]
-    env_file: .env
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
     depends_on:
-      postgres: {condition: service_healthy}
-      redis: {condition: service_healthy}
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
   postgres:
     image: postgres:17-alpine
-    environment: {POSTGRES_DB: llm_gateway, POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres}
-    healthcheck: {test: ["CMD-SHELL","pg_isready -U postgres -d llm_gateway"],interval: 5s,timeout: 5s,retries: 10}
-    volumes: [pgdata:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_DB: llm_gateway
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d llm_gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
   redis:
     image: redis:8-alpine
-    healthcheck: {test: ["CMD","redis-cli","ping"],interval: 5s,timeout: 3s,retries: 10}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   ollama:
     image: ollama/ollama:latest
     profiles: ["ollama"]
-    volumes: [ollamadata:/root/.ollama]
-    ports: ["11434:11434"]
-volumes: {pgdata: {}, ollamadata: {}}
+    volumes:
+      - ollamadata:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  ollamadata:
