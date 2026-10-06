@@ -149,7 +149,7 @@ The current reference implementation favors a compact operational surface over a
 ## Development
 
 ```bash
-npm ci
+npm install
 npm run migration:run
 npm run start:dev
 npm test
