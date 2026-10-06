@@ -1,0 +1,1 @@
+import 'reflect-metadata';import {DataSource}from'typeorm';import {ApiKey}from'../auth/api-key.entity';import {UsageLog}from'../usage/usage.entity';export default new DataSource({type:'postgres',url:process.env.DATABASE_URL,entities:[ApiKey,UsageLog],migrations:['src/database/migrations/*.ts']});
