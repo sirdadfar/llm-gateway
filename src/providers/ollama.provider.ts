@@ -1,0 +1,12 @@
+import { Injectable } from '@nestjs/common';
+import { ChatRequest, ChatResult, LLMProvider, StreamChunk } from './llm-provider.interface';
+
+@Injectable()
+export class OllamaProvider implements LLMProvider {
+  readonly name='ollama';
+  private readonly base=process.env.OLLAMA_BASE_URL??'http://localhost:11434';
+  async chat(r:ChatRequest,signal?:AbortSignal):Promise<ChatResult>{ const res=await fetch(`${this.base}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:r.model.replace(/^ollama\//,''),messages:r.messages,stream:false,options:{temperature:r.temperature,num_predict:r.maxTokens,top_p:r.topP}}),signal}); if(!res.ok) throw new Error(`Ollama returned ${res.status}`); const x=await res.json() as {message?:{content?:string};prompt_eval_count?:number;eval_count?:number;done_reason?:string}; const p=x.prompt_eval_count??0,c=x.eval_count??0; return {id:crypto.randomUUID(),model:r.model,content:x.message?.content??'',finishReason:x.done_reason??'stop',usage:{promptTokens:p,completionTokens:c,totalTokens:p+c}}; }
+  async *chatStream(r:ChatRequest,signal?:AbortSignal):AsyncIterable<StreamChunk>{ const res=await fetch(`${this.base}/api/chat`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:r.model.replace(/^ollama\//,''),messages:r.messages,stream:true,options:{temperature:r.temperature,num_predict:r.maxTokens,top_p:r.topP}}),signal}); if(!res.ok||!res.body) throw new Error(`Ollama returned ${res.status}`); const reader=res.body.getReader(),decoder=new TextDecoder(); let buffer=''; const id=crypto.randomUUID(); for(;;){const {value,done}=await reader.read(); if(done) break; buffer+=decoder.decode(value,{stream:true}); const lines=buffer.split('\n'); buffer=lines.pop()??''; for(const line of lines){if(!line.trim()) continue; const x=JSON.parse(line) as {message?:{content?:string};done?:boolean;done_reason?:string;prompt_eval_count?:number;eval_count?:number}; yield {id,model:r.model,delta:x.message?.content??'',finishReason:x.done?x.done_reason??'stop':undefined,usage:x.done?{promptTokens:x.prompt_eval_count??0,completionTokens:x.eval_count??0,totalTokens:(x.prompt_eval_count??0)+(x.eval_count??0)}:undefined};}} }
+  async listModels():Promise<string[]>{try{const r=await fetch(`${this.base}/api/tags`);if(!r.ok)return[];const x=await r.json() as {models?:Array<{name:string}>};return (x.models??[]).map(m=>`ollama/${m.name}`)}catch{return[]}}
+  async healthCheck():Promise<boolean>{try{const r=await fetch(this.base);return r.ok}catch{return false}}
+}
