@@ -1,0 +1,1 @@
+import {ApiKeyService}from'../src/auth/api-key.service';describe('ApiKeyService',()=>{it('hashes deterministically',()=>{const s=new ApiKeyService({}as never);expect(s.hash('lgw_test')).toHaveLength(64);expect(s.hash('lgw_test')).toBe(s.hash('lgw_test'))})})
